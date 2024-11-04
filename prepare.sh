@@ -73,3 +73,7 @@ git submodule update --init
 make utils/cbit
 FW_FILE=${SCRIPT_PATH}/edk2/Build/OvmfX64/DEBUG_GCC5/FV/OVMF.fd make
 popd
+
+pushd "${SCRIPT_PATH}/keylime"
+git submodule update --init
+popd

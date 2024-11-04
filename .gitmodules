@@ -9,6 +9,10 @@
 [submodule "kbs/raclients"]
 	path = kbs/raclients
 	url = https://github.com/stefano-garzarella/raclients.git
+[submodule "keylime"]
+    path = keylime
+    branch = podman-build
+    url = https://github.com/tylerfanelli/keylime.git
 [submodule "ms-tpm-containerized-build"]
 	path = ms-tpm-containerized-build
 	url = https://github.com/stefano-garzarella/ms-tpm-containerized-build.git
