@@ -1,5 +1,10 @@
 #!/bin/bash
 
+GIT_ROOT=$(git rev-parse --show-toplevel) || {
+    echo "Please run this script from inside the snp-svsm-vtpm repository tree"
+    exit 1
+}
+
 SCRIPT_PATH="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
 # Load VM configuration
@@ -36,6 +41,13 @@ while [ "$1" != "" ]; do
 done
 
 set -ex
+
+# Enable using the libvirt bridge network
+if [[ ! -f "${GIT_ROOT}/qemu/build/qemu-bundle/usr/local/etc/qemu/bridge.conf" ]]; then
+    systemctl enable --now libvirtd
+    mkdir -p "${GIT_ROOT}/qemu/build/qemu-bundle/usr/local/etc/qemu"
+    echo "allow virbr0" > "${GIT_ROOT}/qemu/build/qemu-bundle/usr/local/etc/qemu/bridge.conf"
+fi
 
 ${SCRIPT_PATH}/svsm/scripts/launch_guest.sh --qemu "${QEMU}" \
     --proxy "${PROXY_SOCK}" \
