@@ -21,8 +21,8 @@
 	url = https://github.com/microsoft/igvm
 [submodule "svsm"]
 	path = svsm
-	url = https://github.com/stefano-garzarella/svsm.git
-	branch = vtpm-stateful
+	url = https://github.com/ansasaki/svsm.git
+	branch = keylime
 [submodule "qemu"]
 	path = qemu
 	url = https://github.com/osteffenrh/qemu.git
