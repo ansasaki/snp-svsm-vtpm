@@ -20,7 +20,7 @@ For running this demo, you need the host machine with:
   - Coconut source kernel code.  
     You can build the host kernel by following the instructions here:
     https://github.com/coconut-svsm/svsm/blob/main/Documentation/INSTALL.md#preparing-the-host
-  - Fedora copr package  
+  - Fedora copr package
 ```shell
 sudo dnf copr enable -y @virtmaint-sig/sev-snp-coconut
 sudo dnf install kernel-snp-coconut
@@ -101,6 +101,48 @@ generates a new vTPM.
 ./remanufacture-tpm.sh
 ```
 
+### Start the Keylime verifier and registrar on the host
+
+Run the `start-keylime-verifier.sh` to create the `~/keylime/CERTS` directory
+where the certificates used by Keylime will be stored and start the verifier in
+a container.
+
+Run the `start-keylime-registrar.sh` to start the registrar
+
+Optional: Check that the verifier is up and accessible by the tenant:
+```shell
+./tenant.sh -c cvstatus
+```
+
+Optional: Check that the registrar is up and accessible by the tenant:
+```shell
+./tenant.sh -c regstatus
+```
+
+### Enable using the bridge interface to access the cVM on the host
+
+The Keylime agent is a server (works in the pull model, receiving requests from
+the verifier). To allow connections from the host to the guest, a bridge
+interface is needed. The following commands creates the bridge interface and
+enables it inside the cVM.
+
+When starting the cVM using the modified `start-cvm.sh` script, the following
+steps are executed:
+
+Enable the libvirtd service to create the bridge interface:
+```shell
+systemctl enable --now libvirtd
+```
+(Optional) Check that the default bridge interface `virbr0` is available:
+```shell
+ip addr show virbr0
+```
+
+Enable using the bridge interface in qemu:
+```shell
+echo "allow virbr0" > qemu/build/qemu-bundle/usr/local/etc/qemu/bridge.conf
+```
+
 ### Start the Confidential VM
 
 And finally we launch our CVM. SVSM will receive the key from the Key Broker
@@ -108,6 +150,97 @@ server and can access its state by decrypting it.
 
 ```shell
 ./start-cvm.sh
+```
+
+### Download and build the Keylime agent in the cVM
+
+Clone the `svsm` branch of the rust-keylime repo:
+```shell
+git clone --branch svsm https://github.com/ansasaki/rust-keylime.git
+```
+
+Install the Keylime agent build dependencies:
+```shell
+dnf install rust cargo openssl-devel tpm2-tss-devel clang swtpm swtpm-tools
+```
+
+The agent uses the ports `9002` and `8992`. To allow external connections, it is
+necessary to open these ports in the firewall
+
+In the rust-keylime directory:
+
+Run the script to open the firewall ports:
+```shell
+./scripts/open_firewall_ports.sh
+```
+
+The `rust-keylime` repo contains a helper script for tests that manufacture a
+swtpm and sets the environment variable in a new shell session. When the session
+is closed, the created TPM is cleaned.
+
+Run the script to setup a swtpm and start a shell session with the TCTI
+configuration environment variables set:
+```shell
+./tests/setup_swtpm.sh
+```
+
+Inside the created shell session:
+
+Copy the CA certificate that signed the swtpm EK certificate so that the tenant
+can use it:
+```shell
+scp /var/lib/swtpm-localca/issuercert.pem <REPLACE_WITH_YOUR_USER>@192.168.122.1:~/keylime/CERTS/tpm_cert_store/.
+scp /var/lib/swtpm-localca/swtpm-localca-rootca-cert.pem <REPLACE_WITH_YOUR_USER>@192.168.122.1:~/keylime/CERTS/tpm_cert_store/.
+```
+
+In the containers, the `~/keylime/CERTS` is mounted as `/var/lib/keylime`, which
+is the default Keylime working directory. There, in the
+`/var/lib/keylime/tpm_cert_store` are stored the CA certificates that signed the
+EK certificates from the trusted TPMs. The previous step added the `swtpm`
+certificates to the trust store so that the tenant can verify the EK certificate
+provided by the agent.
+
+Start the agent using the created swtpm:
+```shell
+./scripts/start_agent.sh
+```
+
+The agent is started using the default bridge IP as the registrar IP
+(`192.168.122.1`) and the local IP assigned by the bridge dhcp as the contact IP
+
+### Enroll the agent to be monitored by the verifier on the host
+
+Back to the host:
+
+Check that the registrar correctly received the agent registration:
+```shell
+./tenant.sh -c reglist
+```
+It should show the agent uuid
+
+(Optional) Check what the agent sent to the registrar:
+```shell
+./tenant.sh -c regstatus
+```
+
+(Optional) Check that the verifier is receiving requests from the tenant normally:
+```shell
+./tenant.sh -c cvstatus
+```
+
+Enroll the agent to the verifier (remember to use the cVM IP in the 192.168.122.* range):
+```shell
+./tenant.sh -t <AGENT_IP> -c add --cert default
+```
+
+The tenant will ask for the CA password. The default password is `keylime`.
+
+The enrollment should be successful. On the cVM you should see requests being
+replied by the agent
+
+To stop the monitoring and remove the agent from the verifier, run on the host:
+```shell
+./tenant.sh -c delete
 ```
 
 ### Seal the LUKS key with the TPM
